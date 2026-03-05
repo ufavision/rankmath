@@ -19,6 +19,7 @@ LOG_FILE="/var/log/rankmath-connect.log"
 LOG_PASS="/var/log/rankmath-connect-pass.log"
 LOG_FAIL="/var/log/rankmath-connect-fail.log"
 LOG_ALREADY="/var/log/rankmath-connect-already.log"
+LOG_OVERWRITE="/var/log/rankmath-connect-overwrite.log"
 LOG_NOPLUGIN="/var/log/rankmath-connect-noplugin.log"
 LOG_SKIP="/var/log/rankmath-connect-skip.log"
 LOCK_FILE="${LOG_FILE}.lock"
@@ -36,8 +37,8 @@ cleanup() {
     rm -rf "$RESULT_DIR"
     rm -f "$LOCK_FILE" \
         "${LOG_FILE}.pass.lock" "${LOG_FILE}.fail.lock" \
-        "${LOG_FILE}.already.lock" "${LOG_FILE}.noplugin.lock" \
-        "${LOG_FILE}.skip.lock"
+        "${LOG_FILE}.already.lock" "${LOG_FILE}.overwrite.lock" \
+        "${LOG_FILE}.noplugin.lock" "${LOG_FILE}.skip.lock"
 }
 trap cleanup EXIT
 
@@ -49,7 +50,7 @@ fi
 
 # ─── ล้าง log ────────────────────────────────────────────────
 > "$LOG_FILE"; > "$LOG_PASS"; > "$LOG_FAIL"
-> "$LOG_ALREADY"; > "$LOG_NOPLUGIN"; > "$LOG_SKIP"
+> "$LOG_ALREADY"; > "$LOG_OVERWRITE"; > "$LOG_NOPLUGIN"; > "$LOG_SKIP"
 
 START_TIME=$(date +%s)
 log "======================================"
@@ -108,11 +109,12 @@ process_site() {
     _log_r() {
         local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
         case "$1" in
-            pass)     ( flock 201; echo "[$ts] $2" >> "$LOG_PASS"     ) 201>"${LOG_FILE}.pass.lock" ;;
-            fail)     ( flock 202; echo "[$ts] $2" >> "$LOG_FAIL"     ) 202>"${LOG_FILE}.fail.lock" ;;
-            already)  ( flock 203; echo "[$ts] $2" >> "$LOG_ALREADY"  ) 203>"${LOG_FILE}.already.lock" ;;
-            noplugin) ( flock 204; echo "[$ts] $2" >> "$LOG_NOPLUGIN" ) 204>"${LOG_FILE}.noplugin.lock" ;;
-            skip)     ( flock 205; echo "[$ts] $2" >> "$LOG_SKIP"     ) 205>"${LOG_FILE}.skip.lock" ;;
+            pass)     ( flock 201; echo "[$ts] $2" >> "$LOG_PASS"      ) 201>"${LOG_FILE}.pass.lock" ;;
+            fail)     ( flock 202; echo "[$ts] $2" >> "$LOG_FAIL"      ) 202>"${LOG_FILE}.fail.lock" ;;
+            already)  ( flock 203; echo "[$ts] $2" >> "$LOG_ALREADY"   ) 203>"${LOG_FILE}.already.lock" ;;
+            overwrite)( flock 206; echo "[$ts] $2" >> "$LOG_OVERWRITE" ) 206>"${LOG_FILE}.overwrite.lock" ;;
+            noplugin) ( flock 204; echo "[$ts] $2" >> "$LOG_NOPLUGIN"  ) 204>"${LOG_FILE}.noplugin.lock" ;;
+            skip)     ( flock 205; echo "[$ts] $2" >> "$LOG_SKIP"      ) 205>"${LOG_FILE}.skip.lock" ;;
         esac
     }
 
@@ -132,11 +134,18 @@ process_site() {
         // ── 2. ตรวจว่า connect แล้วหรือยัง ──────────────────
         $existing = RankMath\Admin\Admin_Helper::get_registration_data();
         if ($existing && !empty($existing["api_key"])) {
-            printf("STATUS:ALREADY\tUSER:%s\tPLAN:%s",
-                $existing["username"] ?? "?",
-                $existing["plan"]     ?? "?"
-            );
-            return;
+            $current_user = $existing["username"] ?? "";
+            // ถ้าเป็น account เดียวกัน → ALREADY ข้ามไปเลย
+            if ($current_user === "'"$U"'") {
+                printf("STATUS:ALREADY\tUSER:%s\tPLAN:%s",
+                    $existing["username"] ?? "?",
+                    $existing["plan"]     ?? "?"
+                );
+                return;
+            }
+            // ถ้าเป็น account อื่น → OVERWRITE ล้างแล้ว inject ใหม่
+            printf("STATUS:OVERWRITE\tOLD_USER:%s\t", $current_user);
+            RankMath\Admin\Admin_Helper::get_registration_data(false);
         }
 
         // ── 3. Inject registration data ──────────────────────
@@ -172,6 +181,25 @@ process_site() {
             _log_r already "$SITE | user=$AU | plan=$AP"
             touch "${RESULT_DIR}/already_${UNIQ}"
             ;;
+        OVERWRITE)
+            # ล้างแล้ว inject ใหม่ — ดู DONE ต่อจากนี้
+            local OLD_U
+            OLD_U=$(echo "$EVAL_OUT" | grep -oP '(?<=OLD_USER:)[^\t]*')
+            # ดึง STATUS:DONE ที่ต่อจาก OVERWRITE
+            local DONE_STATUS DS DU
+            DONE_STATUS=$(echo "$EVAL_OUT" | grep -oP '(?<=STATUS:DONE)[^\n]*' || true)
+            DU=$(echo "$EVAL_OUT" | grep -oP '(?<=SITE:)[^\t]*')
+            DS=$(echo "$EVAL_OUT" | grep -oP '(?<=SAVED:)\d+')
+            if [[ "$DS" == "1" ]]; then
+                _log  "🔄 OVERWRITE: $LABEL | old=$OLD_U → new=$RM_USERNAME | site=$DU"
+                _log_r overwrite "$SITE | old_user=$OLD_U → new_user=$RM_USERNAME | site=$DU"
+                touch "${RESULT_DIR}/pass_${UNIQ}"
+            else
+                _log  "❌ FAIL (overwrite verify ล้มเหลว): $LABEL | old=$OLD_U"
+                _log_r fail "$SITE | overwrite fail | old_user=$OLD_U"
+                touch "${RESULT_DIR}/fail_${UNIQ}"
+            fi
+            ;;
         NOPLUGIN)
             _log  "⏭  SKIP (ไม่มี Rank Math): $LABEL"
             _log_r noplugin "$SITE"
@@ -200,7 +228,7 @@ process_site() {
 }
 
 export -f process_site
-export LOG_FILE LOCK_FILE LOG_PASS LOG_FAIL LOG_ALREADY LOG_NOPLUGIN LOG_SKIP
+export LOG_FILE LOCK_FILE LOG_PASS LOG_FAIL LOG_ALREADY LOG_OVERWRITE LOG_NOPLUGIN LOG_SKIP
 export RESULT_DIR WP_TIMEOUT RM_USERNAME RM_EMAIL RM_API_KEY RM_PLAN
 
 # ─── รัน parallel ────────────────────────────────────────────
@@ -224,18 +252,21 @@ SUCCESS=$(  find "$RESULT_DIR" -name "pass_*"     2>/dev/null | wc -l)
 FAILED=$(   find "$RESULT_DIR" -name "fail_*"     2>/dev/null | wc -l)
 ALREADY=$(  find "$RESULT_DIR" -name "already_*"  2>/dev/null | wc -l)
 NOPLUGIN=$( find "$RESULT_DIR" -name "noplugin_*" 2>/dev/null | wc -l)
+OVERWRITE=$(grep -c "OVERWRITE" "$LOG_OVERWRITE" 2>/dev/null || echo 0)
 
 log "======================================"
 log " สรุปผลรวม"
-log " รวมทั้งหมด           : $TOTAL เว็บ"
-log " ✅ Pass (inject ใหม่) : $SUCCESS เว็บ"
-log " ✔️  Already connected  : $ALREADY เว็บ"
-log " ❌ Fail               : $FAILED เว็บ"
-log " ⏭  No Plugin          : $NOPLUGIN เว็บ"
-log " เวลาที่ใช้            : $(( ELAPSED / 60 )) นาที $(( ELAPSED % 60 )) วินาที"
+log " รวมทั้งหมด              : $TOTAL เว็บ"
+log " ✅ Pass (inject ใหม่)   : $SUCCESS เว็บ"
+log " ✔️  Already (ufavision)  : $ALREADY เว็บ  (ข้ามแล้ว)"
+log " 🔄 Overwrite (account อื่น) : $OVERWRITE เว็บ (เปลี่ยนเป็น ufavision แล้ว)"
+log " ❌ Fail                  : $FAILED เว็บ"
+log " ⏭  No Plugin             : $NOPLUGIN เว็บ"
+log " เวลาที่ใช้               : $(( ELAPSED / 60 )) นาที $(( ELAPSED % 60 )) วินาที"
 log "======================================"
-log " ✅ Pass    : $LOG_PASS"
-log " ✔️  Already : $LOG_ALREADY"
-log " ❌ Fail    : $LOG_FAIL"
-log " ⏭  Skip    : $LOG_NOPLUGIN"
+log " ✅ Pass      : $LOG_PASS"
+log " ✔️  Already   : $LOG_ALREADY"
+log " 🔄 Overwrite : $LOG_OVERWRITE"
+log " ❌ Fail      : $LOG_FAIL"
+log " ⏭  Skip      : $LOG_NOPLUGIN"
 log "======================================"
