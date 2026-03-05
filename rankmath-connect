@@ -1,0 +1,13 @@
+# ─── Rank Math Connect Config ───────────────────────────────
+# ไฟล์นี้ควรอยู่ที่ /root/.rankmath-connect.conf
+# chmod 600 /root/.rankmath-connect.conf
+
+# Account ใหม่
+RM_USERNAME="ufavisionseoteam"
+RM_EMAIL="ufavisionseoteam@gmail.com"
+RM_API_KEY="03cefb18bb49a91d3c619d2906b43db8"
+RM_PLAN="free"
+
+# Account เก่า (สำหรับ deactivate)
+RM_OLD_USERNAME="ufasonicseoteam"
+RM_OLD_API_KEY="e3f2de5cccb84e62c9e4df85100e87b8"
