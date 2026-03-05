@@ -13,21 +13,7 @@
 4. ถ้ายังไม่เชื่อมต่อ → Activate ผ่าน License Key
 5. บันทึก log แยกตาม status ทุกเว็บ
 ```
-
 ---
-
-## ⚙️ Requirements
-
-| รายการ | รายละเอียด |
-|--------|-----------|
-| OS | Linux (CentOS / Ubuntu / AlmaLinux) |
-| Server | cPanel / WHM |
-| [WP-CLI](https://wp-cli.org) | ต้องติดตั้งก่อนใช้งาน |
-| Rank Math Plugin | ต้องติดตั้งและ active ในแต่ละเว็บ |
-| Rank Math License Key | สำหรับ Pro Plan (Free ไม่ต้องใช้) |
-
----
-
 ## 🚀 วิธีใช้งาน
 
 ### ▶️ รันแบบอันเดียวจบ (แนะนำ)
@@ -42,30 +28,19 @@ bash <(curl -s https://raw.githubusercontent.com/AnonymousVS/rankmath/main/conne
 rm -f "$CONF"
 ```
 
-รันด้วยอันนี้ `private`:
-
-```bash
-bash <(curl -s https://raw.githubusercontent.com/AnonymousVS/rankmath/main/connect-account.sh) \
-     <(curl -s -H "Authorization: token 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" \
-       https://raw.githubusercontent.com/AnonymousVS/config/main/rankmath-connect.conf)
-```
-
-ถ้ามี **License Key** ให้ส่งไปในคำสั่งเดียวได้เลย:
-
-```bash
-curl -s https://raw.githubusercontent.com/AnonymousVS/rankmath/refs/heads/main/connect-account.sh \
-  | sed 's/RM_LICENSE_KEY=""/RM_LICENSE_KEY="YOUR-KEY-HERE"/' \
-  | bash
-```
-
 ---
 
-### 📥 หรือ Download แล้วรันเอง
+## ⚙️ Requirements
 
-```bash
-wget https://raw.githubusercontent.com/AnonymousVS/rankmath/refs/heads/main/connect-account.sh
-chmod +x connect-account.sh
-```
+| รายการ | รายละเอียด |
+|--------|-----------|
+| OS | Linux (CentOS / Ubuntu / AlmaLinux) |
+| Server | cPanel / WHM |
+| [WP-CLI](https://wp-cli.org) | ต้องติดตั้งก่อนใช้งาน |
+| Rank Math Plugin | ต้องติดตั้งและ active ในแต่ละเว็บ |
+| Rank Math License Key | สำหรับ Pro Plan (Free ไม่ต้องใช้) |
+
+---
 
 ### 2. ตั้งค่า License Key (เฉพาะ Pro Plan)
 
